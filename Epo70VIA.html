@@ -878,6 +878,27 @@ class Via {
     }
     return buf;
   }
+  // ---- dynamic macros (VIA 0x0C–0x10). Buffer = macros concatenated, each NUL-terminated;
+  //      whole buffer must end in 0x00. Get/set chunk in ≤28-byte windows like the keymap buffer.
+  async getMacroCount(){ const r=await this.exec([VIA_CMD.MACRO_GET_COUNT]); return r[1]; }
+  async getMacroBufferSize(){ const r=await this.exec([VIA_CMD.MACRO_GET_BUFFER_SIZE]); return (r[1]<<8)|r[2]; }
+  async getMacroBuffer(totalBytes){
+    const buf=new Uint8Array(totalBytes); const CHUNK=28;
+    for(let off=0; off<totalBytes; off+=CHUNK){
+      const sz=Math.min(CHUNK,totalBytes-off);
+      const r=await this.exec([VIA_CMD.MACRO_GET_BUFFER,(off>>8)&0xFF,off&0xFF,sz]);
+      for(let i=0;i<sz;i++) buf[off+i]=r[4+i];
+    }
+    return buf;
+  }
+  async setMacroBuffer(offset, bytes){
+    const CHUNK=28;
+    for(let i=0;i<bytes.length;i+=CHUNK){
+      const chunk=Array.from(bytes.slice(i,i+CHUNK)); const off=offset+i;
+      await this.exec([VIA_CMD.MACRO_SET_BUFFER,(off>>8)&0xFF,off&0xFF,chunk.length,...chunk]);
+    }
+  }
+  async resetMacros(){ await this.exec([VIA_CMD.MACRO_RESET]); }
   // matrix state: per row 2 bytes (cols 9>8): [ (v>>8)&0xFF, v&0xFF ]
   async getMatrixState(rows,cols){
     const r=await this.exec([VIA_CMD.GET_KEYBOARD_VALUE,KB_VALUE.SWITCH_MATRIX_STATE]);
