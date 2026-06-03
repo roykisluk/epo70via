@@ -329,6 +329,41 @@ async function applyKeymapObject(data, onProgress){
   App.emit("keymap-loaded");
   return {written, skipped, encWritten};
 }
+// ---- Profiles: localStorage-backed keymap snapshots (keymap + encoders only; not macros).
+const PROFILES_KEY="epo70.profiles";
+function storageOK(){ try{ const k="__epo70probe"; localStorage.setItem(k,"1"); localStorage.removeItem(k); return true; }catch(e){ return false; } }
+function loadProfiles(){ try{ return JSON.parse(localStorage.getItem(PROFILES_KEY)||"{}"); }catch(e){ return {}; } }
+function saveProfiles(p){ try{ localStorage.setItem(PROFILES_KEY, JSON.stringify(p)); return true; }catch(e){ return false; } }
+function downloadJSON(obj, filename){
+  const blob=new Blob([JSON.stringify(obj,null,1)],{type:"application/json"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+  a.download=filename; a.click(); URL.revokeObjectURL(a.href);
+}
+
+// Auto-capture the live layout as "default" once per connection. Listen on "connect"
+// (NOT "keymap-loaded"): on initial connect reloadKeymap()/keymap-loaded fires BEFORE
+// "connect", and App.keymap is already populated when "connect" fires. Import/apply emit
+// "keymap-loaded" but NOT "connect", so this never fires on a profile apply.
+App.on("connect", async ()=>{
+  if(!App.keymap) return;
+  const profiles=loadProfiles();
+  if(profiles["default"]) return;            // already captured on this machine
+  try{
+    const obj=await buildKeymapObject();
+    const prof={ name:"default", savedAt:new Date().toISOString(), ...obj };
+    profiles["default"]=prof;
+    const stored=saveProfiles(profiles);
+    downloadJSON(prof, "default-profile.json");
+    log(stored
+      ? 'Saved current layout as profile "default" (and downloaded default-profile.json).'
+      : 'Storage unavailable — downloaded default-profile.json as your safety backup.', "ok");
+    App.emit("profiles-changed");
+  }catch(e){ log("Auto-save of default profile failed: "+e.message,"warn"); }
+});
+
+// Keep App.macroCount fresh so the keycode picker can offer M0.. without opening the Macros tab.
+App.on("connect", async ()=>{ try{ App.macroCount=await App.via.getMacroCount(); }catch(e){} });
+
 registerPanel({
   id:"io", title:"④ Import / Export", requiresConnection:false,
   render(root){
@@ -379,5 +414,103 @@ registerPanel({
         await reloadKeymap(); }
       catch(e){ log("Reset failed: "+e.message,"err"); }
     };
+  }
+});
+
+registerPanel({
+  id:"profiles", title:"⑤ Profiles", requiresConnection:false,
+  render(root){
+    const draw=()=>{
+      const profiles=loadProfiles();
+      const names=Object.keys(profiles).sort((a,b)=> a==="default"?-1 : b==="default"?1 : a.localeCompare(b));
+      const banner = storageOK() ? "" :
+        `<div class="note err">This browser context can't persist profiles (common when the tool is opened from a <code>file://</code> path). Profiles you save this session won't survive a reload — use <b>Export to file</b> to keep them.</div>`;
+      const rows = names.length ? names.map(n=>{
+        const p=profiles[n]; const when=(p.savedAt||"").replace("T"," ").slice(0,16);
+        const keys=(p.layers||[]).reduce((s,l)=>s+l.length,0);
+        return `<tr>
+          <td><b>${escapeHtml(n)}</b></td>
+          <td class="muted">${escapeHtml(when)}</td>
+          <td class="muted">${p.layerCount||0} layers / ${keys} keys</td>
+          <td>
+            <button data-act="apply" data-n="${escapeHtml(n)}">Apply</button>
+            <button data-act="export" data-n="${escapeHtml(n)}">Export</button>
+            <button data-act="rename" data-n="${escapeHtml(n)}">Rename</button>
+            <button class="danger" data-act="delete" data-n="${escapeHtml(n)}">Delete</button>
+          </td></tr>`;
+      }).join("") : `<tr><td colspan="4" class="muted">No saved profiles yet.</td></tr>`;
+      root.innerHTML=`
+        <div class="card">
+          <h2>Profiles</h2>
+          <p class="muted">A profile is a full snapshot of every layer + encoder action (not macros). Your current layout is auto-saved as <b>default</b> the first time you connect.</p>
+          ${banner}
+          <div class="row">
+            <button id="saveNew" class="primary">Save current layout as new profile…</button>
+            <input type="file" id="profImport" accept="application/json,.json">
+            <button id="profImportBtn">Import profile from file</button>
+          </div>
+        </div>
+        <div class="card">
+          <table class="kv"><thead><tr><th>Name</th><th>Saved</th><th>Size</th><th>Actions</th></tr></thead>
+          <tbody>${rows}</tbody></table>
+          <div id="profOut" style="margin-top:10px"></div>
+        </div>`;
+
+      const out=root.querySelector("#profOut");
+
+      root.querySelector("#saveNew").onclick=async()=>{
+        if(!needConnection()) return;
+        const name=(prompt("Profile name:")||"").trim();
+        if(!name){ return; }
+        const profiles=loadProfiles();
+        if(profiles[name] && !confirm(`Overwrite existing profile "${name}"?`)) return;
+        try{
+          const obj=await buildKeymapObject();
+          profiles[name]={ name, savedAt:new Date().toISOString(), ...obj };
+          const ok=saveProfiles(profiles);
+          if(!ok) downloadJSON(profiles[name], name+"-profile.json");
+          log(`Saved profile "${name}".${ok?"":" (storage unavailable — downloaded instead)"}`, "ok");
+          draw();
+        }catch(e){ out.innerHTML=`<span class="err">${escapeHtml(e.message)}</span>`; }
+      };
+
+      root.querySelector("#profImportBtn").onclick=async()=>{
+        const f=root.querySelector("#profImport").files[0];
+        if(!f){ out.innerHTML='<span class="warn">Choose a file first.</span>'; return; }
+        let data; try{ data=JSON.parse(await f.text()); }catch(e){ out.innerHTML='<span class="err">Invalid JSON.</span>'; return; }
+        if(!data.layers){ out.innerHTML='<span class="err">Not a keymap/profile file.</span>'; return; }
+        const name=(prompt("Save imported profile as:", data.name||f.name.replace(/\.json$/,""))||"").trim();
+        if(!name) return;
+        const profiles=loadProfiles();
+        profiles[name]={ name, savedAt:new Date().toISOString(), ...data };
+        saveProfiles(profiles); log(`Imported profile "${name}".`,"ok"); draw();
+      };
+
+      root.querySelectorAll("button[data-act]").forEach(btn=>{
+        btn.onclick=async()=>{
+          const act=btn.dataset.act, n=btn.dataset.n;
+          const profiles=loadProfiles(); const p=profiles[n]; if(!p) return;
+          if(act==="export"){ downloadJSON(p, n+"-profile.json"); return; }
+          if(act==="delete"){ if(confirm(`Delete profile "${n}"?`)){ delete profiles[n]; saveProfiles(profiles); draw(); } return; }
+          if(act==="rename"){
+            const nn=(prompt("New name:", n)||"").trim(); if(!nn||nn===n) return;
+            profiles[nn]={...p, name:nn}; delete profiles[n]; saveProfiles(profiles); draw(); return;
+          }
+          if(act==="apply"){
+            if(!needConnection()) return;
+            if(!confirm(`Apply profile "${n}" — this overwrites the keymap on the keyboard. Continue?`)) return;
+            try{
+              const res=await applyKeymapObject(p, msg=>{ out.innerHTML=`<span class="muted">${msg}</span>`; });
+              out.innerHTML=`<span class="ok">Applied "${escapeHtml(n)}": ${res.written} keys${res.encWritten?`, ${res.encWritten} encoder actions`:""} written, ${res.skipped} skipped.</span>`;
+              log(`Applied profile "${n}".`,"ok");
+            }catch(e){ out.innerHTML=`<span class="err">${escapeHtml(e.message)}</span>`; }
+          }
+        };
+      });
+    };
+    draw();
+    App.on("profiles-changed", draw);
+    App.on("connect", draw);
+    App.on("disconnect", draw);
   }
 });
