@@ -22,12 +22,14 @@ def main():
     kbdef  = read(DEF_JSON).rstrip()
     basic  = read(os.path.join(HERE, "_keycodes_basic.gen.js"))
     panels = read(os.path.join(HERE, "panels.js"))
+    macros = read(os.path.join(HERE, "macros.js"))
 
     tpl = tpl.replace("/*__KEYBOARD_DEF__*/", "const KEYBOARD_DEF = " + kbdef + ";")
     tpl = tpl.replace("/*__BASIC_KEYCODES__*/", basic)
     tpl = tpl.replace("/*__PANELS__*/", panels)
+    tpl = tpl.replace("/*__MACROS__*/", macros)
 
-    for marker in ("/*__KEYBOARD_DEF__*/", "/*__BASIC_KEYCODES__*/", "/*__PANELS__*/"):
+    for marker in ("/*__KEYBOARD_DEF__*/", "/*__BASIC_KEYCODES__*/", "/*__PANELS__*/", "/*__MACROS__*/"):
         if marker in tpl:
             sys.exit("ERROR: marker not replaced: " + marker)
 

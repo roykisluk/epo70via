@@ -167,6 +167,13 @@ const Keycodes = (() => {
           basic:BASIC_KEYCODES.map(([c,n,l,cat])=>({code:c,name:n,label:l,cat}))};
 })();
 
+// Macro encode/decode (injected from macros.js). Browser keycode adapter for it:
+const MacroKC = {
+  nameToCode(n){ const e = Keycodes.byName.get(n); return e ? e.code : null; },
+  codeToName(c){ const e = Keycodes.byCode.get(c); return e ? e.name : null; },
+};
+/*__MACROS__*/
+
 /* ============================================================
    VIA PROTOCOL  — typed commands over WebHID (report id 0, 32B).
    Command IDs verified against the-via/qmk_firmware quantum/via.h.
