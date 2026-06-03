@@ -28,6 +28,9 @@ panels.js                the feature panels (one registerPanel() call each)
 panels.archived.js       parked panels NOT built in (Auto Shift, Lighting, Key Tester,
                          old verbose Layers&Presets). build.py ignores it; paste a
                          registerPanel back into panels.js + rebuild to restore.
+macros.js                PURE VIA macro encode/decode (Node-testable). Injected at the
+                         /*__MACROS__*/ marker.
+test/macros.test.js      node --test suite for macros.js.
 _keycodes_basic.gen.js   AUTO-GENERATED basic keycode table (do not hand-edit)
 Epomaker_Split70.json    the VIA definition (embedded at build time)
 build.py                 assembles the above → Epo70VIA.html
@@ -36,8 +39,8 @@ Epo70VIA.html            THE DELIVERABLE (generated; don't hand-edit — edit so
 
 **To rebuild after editing a source:** `python3 build.py`
 
-`build.py` injects three markers in the template:
-`/*__KEYBOARD_DEF__*/`, `/*__BASIC_KEYCODES__*/`, `/*__PANELS__*/`.
+`build.py` injects four markers in the template:
+`/*__KEYBOARD_DEF__*/`, `/*__BASIC_KEYCODES__*/`, `/*__MACROS__*/`, `/*__PANELS__*/`.
 
 > ⚠ `Epo70VIA.html` is generated. If you edit it directly your change is lost on the next
 > build. Always edit `index.template.html` or `panels.js`, then run `build.py`.
@@ -123,7 +126,7 @@ Then `python3 build.py`. That's the whole process — no shell changes needed.
 (keep the byte layout in a comment), then use it from the panel. Don't issue raw reports from panels.
 
 ## 5. Current panels (panels.js)
-The active tool is deliberately trimmed to four panels (the rest are parked in
+The active tool is deliberately trimmed to six panels (the rest are parked in
 `panels.archived.js`). Order = registration order = tab order.
 1. **Diagnostic** — enumerates HID collections, reports whether the `0xFF60`/usage `0x61`
    interface exists. This is the gate: no FF60 → no web tool can help (firmware needs flashing).
@@ -142,6 +145,15 @@ The active tool is deliberately trimmed to four panels (the rest are parked in
      layer is active; `(4,0)` is never a numpad digit and `MO` on the numpad layer is a no-op.
 4. **Import / Export** — keymap JSON round-trip (`kcToken`/`tokenToKc`) + EEPROM reset. Uses **raw
    firmware layer indices** (NOT `LAYER_VIEW`) so backups stay lossless across the whole keymap.
+5. **Profiles** — localStorage-backed full-keymap snapshots (keymap + encoders, RAW layer
+   indices via the shared buildKeymapObject/applyKeymapObject helpers). Auto-captures the
+   live layout as "default" on the first connect (also downloads default-profile.json as a
+   file:// safety net) and feature-detects whether localStorage persists. Auto-capture binds
+   to the "connect" event (App.keymap is already populated by then; import/apply emit only
+   "keymap-loaded", so it never re-fires on a profile apply).
+6. **Macros** — VIA dynamic-macro editor. Capability-gated on getMacroCount/getMacroBufferSize.
+   Whole-buffer rewrite model; plain text + [[…]] tokens (LaTeX braces literal, newline=Enter).
+   Macros are triggerable because the keycode picker now offers M0.. (QK_MACRO 0x7700+i).
 
 **`LAYER_VIEW` (top of panels.js) — display-only layer relabel.** The user works with only two
 layers: their base content lives on firmware layer **2**, the numpad on firmware layer **3**. The
@@ -166,8 +178,10 @@ There is no physical keyboard available to the author, so:
 ## 7. Known caveats / honest limitations
 - **Auto Shift** keycodes only act if firmware was built with `AUTO_SHIFT_ENABLE`. The UI says so.
 - **Lighting `showIf`** conditions in the definition are not evaluated — all controls are shown.
-- **Macros** are not implemented yet (commands `0x0C`–`0x10` exist in `VIA_CMD` for when they are).
+- **Macros** are implemented (Macros panel + macros.js). Encoding sourced from QMK master;
+  the [[DELAY]]/[[TAP]] non-text encodings may differ on older firmware — flagged in the UI.
+  Profiles do NOT include macros (keymap + encoders only).
 - Export uses QMK names for simple keycodes and hex for complex composites (LT/MT/MODS/OSM) so the
   round-trip is lossless within this tool; it is close to but not byte-identical to VIA's own format.
 - Export/import **includes encoder rotation** (read live per layer via `getEncoder`, replayed via
-  `setEncoder`). Macros are not part of export yet (not implemented).
+  `setEncoder`). Macros are not part of export (keymap + encoders only).
