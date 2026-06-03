@@ -161,6 +161,7 @@ const Keycodes = (() => {
       return {code:kc,name:"MT",label:`${modName(m)}_T(${tk?tk.label:hex(t)})`,cat:"Modifiers"};}
     if (between(0x0100,0x1FFF)){const m=(kc>>8)&0x1F,b=kc&0xFF,bk=byCode.get(b);
       return {code:kc,name:"MODS",label:`${modName(m)}(${bk?bk.label:hex(b)})`,cat:"Modifiers"};}
+    if (between(0x7700,0x77FF)) return {code:kc,name:`M${kc-0x7700}`,label:`M${kc-0x7700}`,cat:"Macro"};
     return {code:kc,name:hex(kc),label:hex(kc),cat:"Other",unknown:true};
   }
   return {byCode,byName,custom,decode,layerCode,hex,RANGE,
@@ -354,7 +355,7 @@ function parseLayout(def){
    ============================================================ */
 const Picker = {
   _cb:null, _cat:"Basic", _q:"",
-  catsOrder:["Basic","Modifiers","Layers","Auto Shift","Media","Mouse","System","Custom","Special","All"],
+  catsOrder:["Basic","Modifiers","Layers","Auto Shift","Media","Mouse","System","Custom","Macro","Special","All"],
   open(title, cb){
     this._cb=cb; document.getElementById("pickerTitle").textContent=title||"Choose a keycode";
     document.getElementById("pickerHex").value="";
@@ -377,6 +378,8 @@ const Picker = {
     for(const op of ["MO","TO","TG","DF","OSL","TT"]){
       for(let i=0;i<L;i++) out.push({code:Keycodes.layerCode(op,i),name:`${op}(${i})`,label:`${op}(${i})`,cat:"Layers"});
     }
+    const M = App.macroCount||0;
+    for(let i=0;i<M;i++) out.push({code:0x7700+i,name:`M${i}`,label:`M${i}`,cat:"Macro"});
     return out;
   },
   _renderCats(){
@@ -498,6 +501,10 @@ function selfTest(){
   t("AS_TOGG present", Keycodes.byName.get("AS_TOGG").code===0x7C15);
   t("custom MOR_1 @0x7E03", (Keycodes.byName.get("MOR_1")||{}).code===0x7E03);
   t("LT decode", Keycodes.decode(0x4000|(1<<8)|0x2C).label.startsWith("LT1("));
+  t("macro M3 decodes", Keycodes.decode(0x7703).label==="M3");
+  t("macro encodes 'hi'", Array.from(Macros.encodeMacro("hi",MacroKC)).join()==="104,105");
+  t("macro [[TAP:KC_LEFT]] encodes", Array.from(Macros.encodeMacro("[[TAP:KC_LEFT]]",MacroKC)).join()==="1,1,80");
+  t("macro buffer round-trip", Macros.parseBuffer(Macros.serializeBuffer(["hi","x"],16,MacroKC),2,MacroKC).join("|")==="hi|x");
   const fail=checks.filter(c=>!c[1]);
   if(fail.length){ console.error("SELFTEST FAIL",fail); log("Self-test FAILED: "+fail.map(f=>f[0]).join(", "),"err"); }
   else log(`Self-test passed (${checks.length} keycode checks).`,"ok");
