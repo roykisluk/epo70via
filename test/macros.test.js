@@ -60,3 +60,36 @@ test("[[DELAY]] without number throws", () => {
 test("only basic keycodes (<=0xFF) allowed in tap", () => {
   assert.throws(() => Macros.encodeMacro("[[TAP:LCTL(KC_A)]]", kc), /basic keycodes/);
 });
+
+test("decode round-trips canonical forms", () => {
+  for (const s of ["hi", "a\nb", "\\frac{}{}", "x[[TAB]]y", "[[TAP:KC_LEFT]]", "[[DELAY:100]]"]) {
+    assert.equal(Macros.decodeMacro(Macros.encodeMacro(s, kc), kc), s);
+  }
+});
+test("decode falls back to hex for unknown tap keycode", () => {
+  assert.equal(Macros.decodeMacro(Uint8Array.from([0x01, 0x01, 0xab]), kc), "[[TAP:0xAB]]");
+});
+test("serializeBuffer terminates each macro and ends in 0x00", () => {
+  const buf = Macros.serializeBuffer(["hi", ""], 10, kc);
+  assert.deepEqual(arr(buf), [0x68, 0x69, 0x00, 0x00, 0, 0, 0, 0, 0, 0]);
+  assert.equal(buf[buf.length - 1], 0x00);
+});
+test("parseBuffer splits on NUL and pads to count", () => {
+  const buf = Macros.serializeBuffer(["hi", ""], 10, kc);
+  assert.deepEqual(Macros.parseBuffer(buf, 2, kc), ["hi", ""]);
+});
+test("buffer survives a full round-trip of mixed macros", () => {
+  const texts = ["import numpy as np\n", "[[TAP:KC_LEFT]]", ""];
+  const buf = Macros.serializeBuffer(texts, 64, kc);
+  assert.deepEqual(Macros.parseBuffer(buf, 3, kc), texts);
+});
+test("over-budget serialize throws", () => {
+  assert.throws(() => Macros.serializeBuffer(["toolong"], 4, kc), /exceed buffer/);
+});
+test("bytesUsed counts content plus one terminator per macro", () => {
+  assert.equal(Macros.bytesUsed(["hi", ""], kc), 4); // 2 + term + 0 + term
+});
+test("validate reports ok / error without throwing", () => {
+  assert.equal(Macros.validate("hi", kc).ok, true);
+  assert.equal(Macros.validate("[[FOO]]", kc).ok, false);
+});

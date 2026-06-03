@@ -60,6 +60,63 @@ const Macros = (() => {
     return Uint8Array.from(out);
   }
 
-  return { encodeMacro };
+  function decodeMacro(bytes, kc) {
+    let s = "";
+    const n = bytes.length;
+    for (let i = 0; i < n;) {
+      const b = bytes[i];
+      if (b === PREFIX && i + 1 < n) {
+        const sub = bytes[i + 1];
+        if (sub === DELAY) {
+          let j = i + 2, num = "";
+          while (j < n && bytes[j] >= 0x30 && bytes[j] <= 0x39) { num += String.fromCharCode(bytes[j]); j++; }
+          if (j < n && bytes[j] === PIPE) j++;
+          s += `[[DELAY:${num || "0"}]]`; i = j; continue;
+        }
+        const name = Object.keys(SUB).find(k => SUB[k] === sub);
+        if (name && i + 2 < n) {
+          const code = bytes[i + 2];
+          const kn = (kc && kc.codeToName ? kc.codeToName(code) : null)
+            || ("0x" + code.toString(16).toUpperCase());
+          s += `[[${name}:${kn}]]`; i += 3; continue;
+        }
+      }
+      if (b === 0x0a) { s += "\n"; i++; continue; }
+      if (b === 0x09) { s += "[[TAB]]"; i++; continue; }
+      s += String.fromCharCode(b); i++;
+    }
+    return s;
+  }
+
+  function bytesUsed(texts, kc) {
+    return texts.reduce((sum, t) => sum + encodeMacro(t, kc).length + 1, 0);
+  }
+
+  function serializeBuffer(texts, bufferSize, kc) {
+    const parts = texts.map(t => encodeMacro(t, kc));
+    const used = parts.reduce((s, e) => s + e.length + 1, 0);
+    if (used > bufferSize) throw new Error(`macros exceed buffer (${used}/${bufferSize} bytes)`);
+    const buf = new Uint8Array(bufferSize); // zero-filled => trailing NULs; buffer ends in 0x00
+    let off = 0;
+    for (const e of parts) { buf.set(e, off); off += e.length; buf[off] = NUL; off++; }
+    return buf;
+  }
+
+  function parseBuffer(bytes, count, kc) {
+    const texts = [];
+    let start = 0;
+    for (let i = 0; i < bytes.length && texts.length < count; i++) {
+      if (bytes[i] === NUL) { texts.push(decodeMacro(bytes.subarray(start, i), kc)); start = i + 1; }
+    }
+    while (texts.length < count) texts.push("");
+    return texts;
+  }
+
+  function validate(text, kc) {
+    try { encodeMacro(text, kc); return { ok: true }; }
+    catch (e) { return { ok: false, error: e.message }; }
+  }
+
+  return { encodeMacro, decodeMacro, parseBuffer, serializeBuffer, bytesUsed, validate };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = Macros;
