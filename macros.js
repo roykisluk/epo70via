@@ -24,9 +24,39 @@ const Macros = (() => {
   }
   function pushLiteral(out, s) { for (let i = 0; i < s.length; i++) pushChar(out, s.charCodeAt(i)); }
 
+  const KNOWN = new Set(["ENTER", "TAB", "DELAY", "TAP", "DOWN", "UP"]);
+  const TOKEN_RE = /\[\[([A-Za-z]+)(?::([^\]]*))?\]\]/g;
+
+  function emitToken(out, word, arg, kc) {
+    const W = word.toUpperCase();
+    if (!KNOWN.has(W)) throw new Error(`unknown token [[${word}]]`);
+    if (W === "ENTER") { out.push(0x0a); return; }
+    if (W === "TAB") { out.push(0x09); return; }
+    if (W === "DELAY") {
+      if (!/^\d+$/.test(arg || "")) throw new Error(`[[DELAY:n]] needs a number`);
+      out.push(PREFIX, DELAY);
+      for (const d of String(parseInt(arg, 10))) out.push(d.charCodeAt(0));
+      out.push(PIPE);
+      return;
+    }
+    // TAP / DOWN / UP
+    const code = kc && kc.nameToCode ? kc.nameToCode(arg || "") : null;
+    if (code == null) throw new Error(`[[${W}:${arg}]] — unknown keycode`);
+    if (code > 0xff) throw new Error(`[[${W}:${arg}]] — only basic keycodes (<=0xFF) allowed`);
+    out.push(PREFIX, SUB[W], code);
+  }
+
   function encodeMacro(text, kc) {
+    text = String(text);
     const out = [];
-    pushLiteral(out, String(text));
+    let last = 0, m;
+    TOKEN_RE.lastIndex = 0;
+    while ((m = TOKEN_RE.exec(text)) !== null) {
+      pushLiteral(out, text.slice(last, m.index));
+      emitToken(out, m[1], m[2], kc);
+      last = m.index + m[0].length;
+    }
+    pushLiteral(out, text.slice(last));
     return Uint8Array.from(out);
   }
 

@@ -25,3 +25,38 @@ test("LaTeX braces are literal", () => {
 test("non-ASCII character is rejected", () => {
   assert.throws(() => Macros.encodeMacro("café", kc), /unsupported character/);
 });
+
+test("[[TAB]] -> 0x09 and [[ENTER]] -> 0x0A", () => {
+  assert.deepEqual(arr(Macros.encodeMacro("[[TAB]][[ENTER]]", kc)), [0x09, 0x0a]);
+});
+test("[[TAP:KC_LEFT]] -> 01 01 50", () => {
+  assert.deepEqual(arr(Macros.encodeMacro("[[TAP:KC_LEFT]]", kc)), [0x01, 0x01, 0x50]);
+});
+test("[[DOWN/UP]] use sub-codes 2 and 3", () => {
+  assert.deepEqual(arr(Macros.encodeMacro("[[DOWN:KC_A]][[UP:KC_A]]", kc)),
+    [0x01, 0x02, 0x04, 0x01, 0x03, 0x04]);
+});
+test("[[DELAY:100]] -> 01 04 '1' '0' '0' '|'", () => {
+  assert.deepEqual(arr(Macros.encodeMacro("[[DELAY:100]]", kc)),
+    [0x01, 0x04, 0x31, 0x30, 0x30, 0x7c]);
+});
+test("token word is case-insensitive", () => {
+  assert.deepEqual(arr(Macros.encodeMacro("[[tab]]", kc)), [0x09]);
+});
+test("text around a token is preserved", () => {
+  assert.deepEqual(arr(Macros.encodeMacro("x[[TAB]]y", kc)), [0x78, 0x09, 0x79]);
+});
+test("unknown token throws", () => {
+  assert.throws(() => Macros.encodeMacro("hi[[FOO]]", kc), /unknown token/);
+});
+test("non-token brackets stay literal", () => {
+  // [1] and [[x y]] don't match the token grammar -> literal
+  assert.deepEqual(arr(Macros.encodeMacro("[a]", kc)), [0x5b, 0x61, 0x5d]);
+  assert.doesNotThrow(() => Macros.encodeMacro("[[x y]]", kc));
+});
+test("[[DELAY]] without number throws", () => {
+  assert.throws(() => Macros.encodeMacro("[[DELAY:x]]", kc), /needs a number/);
+});
+test("only basic keycodes (<=0xFF) allowed in tap", () => {
+  assert.throws(() => Macros.encodeMacro("[[TAP:LCTL(KC_A)]]", kc), /basic keycodes/);
+});
