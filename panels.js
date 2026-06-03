@@ -535,9 +535,14 @@ registerPanel({
     let count=0, bufSize=0, texts=[];
     const show=(html)=>{ root.innerHTML=html; };
 
+    // Non-throwing byte total: an invalid slot can't be encoded, so count just its terminator.
+    const usedBytes=()=> texts.reduce((sum,t)=>{ try{ return sum + Macros.encodeMacro(t,MacroKC).length + 1; }catch(e){ return sum + 1; } }, 0);
+    const anyInvalid=()=> texts.some(t=> !Macros.validate(t,MacroKC).ok);
+
     const renderEditor=()=>{
-      const used=Macros.bytesUsed(texts, MacroKC);
+      const used=usedBytes();
       const over=used>bufSize;
+      const blocked=over||anyInvalid();
       const slots=texts.map((t,i)=>{
         const v=Macros.validate(t, MacroKC);
         return `<div class="card">
@@ -546,7 +551,7 @@ registerPanel({
             <span class="muted">bind a key to <code>M${i}</code> in ② Remap to trigger it</span>
           </div>
           <textarea data-i="${i}" rows="3" style="width:100%;font-family:monospace">${escapeHtml(t)}</textarea>
-          <div class="muted">${v.ok?"&nbsp;":`<span class="err">${escapeHtml(v.error)}</span>`}</div>
+          <div class="muted" data-err="${i}">${v.ok?"&nbsp;":`<span class="err">${escapeHtml(v.error)}</span>`}</div>
         </div>`;
       }).join("");
       show(`
@@ -557,10 +562,10 @@ registerPanel({
             LaTeX braces <code>{}</code> are literal. <b>[[DELAY]]/[[TAP]] depend on newer firmware — verify on your board.</b></div>
           <div class="note warn"><b>First time:</b> set <code>M0</code> to <code>hello</code>, Write, bind a key to <code>M0</code> in ② Remap, press it, and confirm it types — before trusting the starter pack.</div>
           <div class="row">
-            <button id="macWrite" class="primary" ${over?"disabled":""}>Write all macros to keyboard</button>
+            <button id="macWrite" class="primary" ${blocked?"disabled":""}>Write all macros to keyboard</button>
             <button id="macStarter">Load starter pack into empty slots</button>
             <button id="macReload">Reload from keyboard</button>
-            <span class="${over?"err":"muted"}">${used} / ${bufSize} bytes${over?" — too large, trim before writing":""}</span>
+            <span id="macMeter" class="${over?"err":"muted"}">${used} / ${bufSize} bytes${over?" — too large, trim before writing":""}</span>
           </div>
           <div id="macOut" style="margin-top:8px"></div>
         </div>
@@ -579,12 +584,17 @@ registerPanel({
       root.querySelector("#macWrite").onclick=write;
     };
 
-    // Cheap path: update only the byte meter + Write-enabled state while typing.
+    // Cheap path on each keystroke: update meter + Write-enabled + per-slot validation, no full re-render.
     const renderEditorMeterOnly=()=>{
-      const used=Macros.bytesUsed(texts, MacroKC); const over=used>bufSize;
-      const meter=root.querySelector("#macWrite")?.parentElement?.querySelector("span");
+      const used=usedBytes(); const over=used>bufSize; const blocked=over||anyInvalid();
+      const meter=root.querySelector("#macMeter");
       if(meter){ meter.className=over?"err":"muted"; meter.textContent=`${used} / ${bufSize} bytes${over?" — too large, trim before writing":""}`; }
-      const wb=root.querySelector("#macWrite"); if(wb) wb.disabled=over;
+      const wb=root.querySelector("#macWrite"); if(wb) wb.disabled=blocked;
+      root.querySelectorAll("textarea[data-i]").forEach(ta=>{
+        const i=+ta.dataset.i; const v=Macros.validate(texts[i],MacroKC);
+        const ed=root.querySelector(`[data-err="${i}"]`);
+        if(ed) ed.innerHTML = v.ok ? "&nbsp;" : `<span class="err">${escapeHtml(v.error)}</span>`;
+      });
     };
 
     const write=async()=>{
