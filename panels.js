@@ -276,6 +276,59 @@ function tokenToKc(tok){
   const r=Keycodes.byName.get(tok);
   return r?r.code:null;
 }
+// Shared keymap (de)serialization — used by Import/Export and Profiles.
+// Uses RAW firmware layer indices (NOT LAYER_VIEW) so snapshots stay lossless.
+async function buildKeymapObject(){
+  const layers=[];
+  for(let l=0;l<App.layerCount;l++){ const layer=[];
+    for(let r=0;r<App.rows;r++)for(let c=0;c<App.cols;c++) layer.push(kcToken(App.getKC(l,r,c)));
+    layers.push(layer);
+  }
+  const encoders=[];
+  if(App.encoders.length){
+    for(let l=0;l<App.layerCount;l++){ const le=[];
+      for(const enc of App.encoders){
+        try{ const cw=await App.via.getEncoder(l,enc.idx,true), ccw=await App.via.getEncoder(l,enc.idx,false);
+          le.push([kcToken(ccw),kcToken(cw)]); }
+        catch(e){ le.push(null); }
+      }
+      encoders.push(le);
+    }
+  }
+  return { tool:"epo70-config", name:App.def.name,
+    vendorProductId:((parseInt(App.def.vendorId,16)<<16)>>>0)|parseInt(App.def.productId,16),
+    matrix:{rows:App.rows,cols:App.cols}, layerCount:App.layerCount,
+    encoderCount:App.encoders.length, layers, encoders };
+}
+async function applyKeymapObject(data, onProgress){
+  if(!data.layers || !data.matrix || data.matrix.rows!==App.rows || data.matrix.cols!==App.cols)
+    throw new Error("File does not match this keyboard's matrix.");
+  let written=0, skipped=0;
+  const nLayers=Math.min(data.layerCount||data.layers.length, App.layerCount);
+  for(let l=0;l<nLayers;l++){ let idx=0;
+    for(let r=0;r<App.rows;r++)for(let c=0;c<App.cols;c++){
+      const tok=data.layers[l][idx++]; const kc=tokenToKc(tok);
+      if(kc==null){ skipped++; continue; }
+      if(kc!==App.getKC(l,r,c)){ try{ await App.via.setKeycode(l,r,c,kc); App.keymap[App.kmIndex(l,r,c)]=kc; written++; }catch(e){ skipped++; } }
+    }
+    if(onProgress) onProgress(`Writing… layer ${l+1}/${nLayers}, ${written} keys`);
+  }
+  let encWritten=0;
+  if(Array.isArray(data.encoders) && App.encoders.length){
+    for(let l=0;l<Math.min(data.encoders.length,App.layerCount);l++){
+      const le=data.encoders[l]||[];
+      for(let ei=0; ei<App.encoders.length && ei<le.length; ei++){
+        const pair=le[ei]; if(!pair) continue;
+        const idx=App.encoders[ei].idx, ccw=tokenToKc(pair[0]), cw=tokenToKc(pair[1]);
+        try{ if(ccw!=null){ await App.via.setEncoder(l,idx,false,ccw); encWritten++; }
+             if(cw!=null){ await App.via.setEncoder(l,idx,true,cw); encWritten++; } }
+        catch(e){ skipped++; }
+      }
+    }
+  }
+  App.emit("keymap-loaded");
+  return {written, skipped, encWritten};
+}
 registerPanel({
   id:"io", title:"④ Import / Export", requiresConnection:false,
   render(root){
@@ -299,27 +352,7 @@ registerPanel({
 
     root.querySelector("#exportBtn").onclick=async()=>{
       if(!App.keymap){ alert("Connect and load the keymap first."); return; }
-      const layers=[];
-      for(let l=0;l<App.layerCount;l++){ const layer=[];
-        for(let r=0;r<App.rows;r++)for(let c=0;c<App.cols;c++) layer.push(kcToken(App.getKC(l,r,c)));
-        layers.push(layer);
-      }
-      // encoders: per layer → per encoder → [ccw, cw] tokens (read live from the keyboard)
-      const encoders=[];
-      if(App.encoders.length){
-        for(let l=0;l<App.layerCount;l++){ const le=[];
-          for(const enc of App.encoders){
-            try{ const cw=await App.via.getEncoder(l,enc.idx,true), ccw=await App.via.getEncoder(l,enc.idx,false);
-              le.push([kcToken(ccw),kcToken(cw)]); }
-            catch(e){ le.push(null); }
-          }
-          encoders.push(le);
-        }
-      }
-      const obj={ tool:"epo70-config", name:App.def.name,
-        vendorProductId:((parseInt(App.def.vendorId,16)<<16)>>>0)|parseInt(App.def.productId,16),
-        matrix:{rows:App.rows,cols:App.cols}, layerCount:App.layerCount,
-        encoderCount:App.encoders.length, layers, encoders };
+      const obj=await buildKeymapObject();
       const blob=new Blob([JSON.stringify(obj,null,1)],{type:"application/json"});
       const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
       a.download=App.def.name+"-keymap.json"; a.click(); URL.revokeObjectURL(a.href);
@@ -332,35 +365,11 @@ registerPanel({
       const out=root.querySelector("#importOut");
       if(!f){ out.innerHTML='<span class="warn">Choose a file first.</span>'; return; }
       let data; try{ data=JSON.parse(await f.text()); }catch(e){ out.innerHTML='<span class="err">Invalid JSON.</span>'; return; }
-      if(!data.layers || !data.matrix || data.matrix.rows!==App.rows || data.matrix.cols!==App.cols){
-        out.innerHTML='<span class="err">File does not match this keyboard\'s matrix.</span>'; return; }
-      let written=0, skipped=0;
-      const nLayers=Math.min(data.layerCount||data.layers.length, App.layerCount);
-      for(let l=0;l<nLayers;l++){ let idx=0;
-        for(let r=0;r<App.rows;r++)for(let c=0;c<App.cols;c++){
-          const tok=data.layers[l][idx++]; const kc=tokenToKc(tok);
-          if(kc==null){ skipped++; continue; }
-          if(kc!==App.getKC(l,r,c)){ try{ await App.via.setKeycode(l,r,c,kc); App.keymap[App.kmIndex(l,r,c)]=kc; written++; }catch(e){ skipped++; } }
-        }
-        out.innerHTML=`<span class="muted">Writing… layer ${l+1}/${nLayers}, ${written} keys</span>`;
-      }
-      // replay encoder mappings (per layer → per encoder → [ccw, cw])
-      let encWritten=0;
-      if(Array.isArray(data.encoders) && App.encoders.length){
-        for(let l=0;l<Math.min(data.encoders.length,App.layerCount);l++){
-          const le=data.encoders[l]||[];
-          for(let ei=0; ei<App.encoders.length && ei<le.length; ei++){
-            const pair=le[ei]; if(!pair) continue;
-            const idx=App.encoders[ei].idx, ccw=tokenToKc(pair[0]), cw=tokenToKc(pair[1]);
-            try{ if(ccw!=null){ await App.via.setEncoder(l,idx,false,ccw); encWritten++; }
-                 if(cw!=null){ await App.via.setEncoder(l,idx,true,cw); encWritten++; } }
-            catch(e){ skipped++; }
-          }
-        }
-      }
-      out.innerHTML=`<span class="ok">Import complete: ${written} keys${encWritten?`, ${encWritten} encoder actions`:""} written, ${skipped} skipped.</span>`;
-      log(`Imported keymap (${written} written, ${skipped} skipped).`,"ok");
-      App.emit("keymap-loaded");
+      try{
+        const res=await applyKeymapObject(data, msg=>{ out.innerHTML=`<span class="muted">${msg}</span>`; });
+        out.innerHTML=`<span class="ok">Import complete: ${res.written} keys${res.encWritten?`, ${res.encWritten} encoder actions`:""} written, ${res.skipped} skipped.</span>`;
+        log(`Imported keymap (${res.written} written, ${res.skipped} skipped).`,"ok");
+      }catch(e){ out.innerHTML=`<span class="err">${escapeHtml(e.message)}</span>`; }
     };
 
     root.querySelector("#resetBtn").onclick=async()=>{
