@@ -102,8 +102,8 @@ In `panels.js`, append:
 
 ```js
 registerPanel({
-  id: "macros",                 // unique, used for the DOM id / tab
-  title: "⑦ Macros",            // tab label
+  id: "mypanel",                // unique, used for the DOM id / tab (don't reuse an existing id)
+  title: "⑦ My Feature",        // tab label
   requiresConnection: true,     // advisory flag (panels still self-guard with needConnection())
   render(root, App) {
     root.innerHTML = `<div class="card">…</div>`;
