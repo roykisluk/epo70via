@@ -362,7 +362,7 @@ App.on("connect", async ()=>{
 });
 
 // Keep App.macroCount fresh so the keycode picker can offer M0.. without opening the Macros tab.
-App.on("connect", async ()=>{ try{ App.macroCount=await App.via.getMacroCount(); }catch(e){} });
+App.on("connect", async ()=>{ try{ App.macroCount=await App.via.getMacroCount(); }catch(e){ console.warn("macro count read failed:", e); } });
 
 registerPanel({
   id:"io", title:"④ Import / Export", requiresConnection:false,
@@ -482,6 +482,7 @@ registerPanel({
         const name=(prompt("Save imported profile as:", data.name||f.name.replace(/\.json$/,""))||"").trim();
         if(!name) return;
         const profiles=loadProfiles();
+        if(profiles[name] && !confirm(`Overwrite existing profile "${name}"?`)) return;
         profiles[name]={ name, savedAt:new Date().toISOString(), ...data };
         saveProfiles(profiles); log(`Imported profile "${name}".`,"ok"); draw();
       };
@@ -494,6 +495,7 @@ registerPanel({
           if(act==="delete"){ if(confirm(`Delete profile "${n}"?`)){ delete profiles[n]; saveProfiles(profiles); draw(); } return; }
           if(act==="rename"){
             const nn=(prompt("New name:", n)||"").trim(); if(!nn||nn===n) return;
+            if(profiles[nn] && !confirm(`A profile named "${nn}" already exists. Overwrite it?`)) return;
             profiles[nn]={...p, name:nn}; delete profiles[n]; saveProfiles(profiles); draw(); return;
           }
           if(act==="apply"){
@@ -509,6 +511,7 @@ registerPanel({
       });
     };
     draw();
+    // render() runs once per panel (the shell builds tabs once), so these subscribe once.
     App.on("profiles-changed", draw);
     App.on("connect", draw);
     App.on("disconnect", draw);
