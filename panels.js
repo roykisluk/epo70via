@@ -517,3 +517,107 @@ registerPanel({
     App.on("disconnect", draw);
   }
 });
+
+// Starter macros. Robust first (pure text + Enter/Tab); [[DELAY]]/[[TAP]] flagged in the UI.
+const MACRO_STARTER=[
+  {label:"LaTeX: equation env", text:"\\begin{equation}\n\n\\end{equation}"},
+  {label:"LaTeX: \\frac{}{}", text:"\\frac{}{}"},
+  {label:"LaTeX: \\cite{}", text:"\\cite{}"},
+  {label:"Python: import numpy", text:"import numpy as np\n"},
+  {label:"Python: import pandas", text:"import pandas as pd\n"},
+  {label:"Python: main guard", text:"if __name__ == \"__main__\":\n[[TAB]]"},
+  {label:"Admin: email", text:"roykisluk@gmail.com"},
+];
+
+registerPanel({
+  id:"macros", title:"⑥ Macros", requiresConnection:true,
+  render(root){
+    let count=0, bufSize=0, texts=[];
+    const show=(html)=>{ root.innerHTML=html; };
+
+    const renderEditor=()=>{
+      const used=Macros.bytesUsed(texts, MacroKC);
+      const over=used>bufSize;
+      const slots=texts.map((t,i)=>{
+        const v=Macros.validate(t, MacroKC);
+        return `<div class="card">
+          <div class="row" style="justify-content:space-between">
+            <b>M${i}</b>
+            <span class="muted">bind a key to <code>M${i}</code> in ② Remap to trigger it</span>
+          </div>
+          <textarea data-i="${i}" rows="3" style="width:100%;font-family:monospace">${escapeHtml(t)}</textarea>
+          <div class="muted">${v.ok?"&nbsp;":`<span class="err">${escapeHtml(v.error)}</span>`}</div>
+        </div>`;
+      }).join("");
+      show(`
+        <div class="card">
+          <h2>Macros</h2>
+          <div class="note">Type the text a macro should "type out". A newline = Enter. Special keys use tokens:
+            <code>[[ENTER]]</code> <code>[[TAB]]</code> <code>[[DELAY:100]]</code> <code>[[TAP:KC_LEFT]]</code>.
+            LaTeX braces <code>{}</code> are literal. <b>[[DELAY]]/[[TAP]] depend on newer firmware — verify on your board.</b></div>
+          <div class="note warn"><b>First time:</b> set <code>M0</code> to <code>hello</code>, Write, bind a key to <code>M0</code> in ② Remap, press it, and confirm it types — before trusting the starter pack.</div>
+          <div class="row">
+            <button id="macWrite" class="primary" ${over?"disabled":""}>Write all macros to keyboard</button>
+            <button id="macStarter">Load starter pack into empty slots</button>
+            <button id="macReload">Reload from keyboard</button>
+            <span class="${over?"err":"muted"}">${used} / ${bufSize} bytes${over?" — too large, trim before writing":""}</span>
+          </div>
+          <div id="macOut" style="margin-top:8px"></div>
+        </div>
+        ${slots}`);
+
+      root.querySelectorAll("textarea[data-i]").forEach(ta=>{
+        ta.oninput=()=>{ texts[+ta.dataset.i]=ta.value; renderEditorMeterOnly(); };
+      });
+      root.querySelector("#macStarter").onclick=()=>{
+        let n=0;
+        for(const s of MACRO_STARTER){ const i=texts.findIndex(t=>t===""); if(i<0) break; texts[i]=s.text; n++; }
+        log(n?`Loaded ${n} starter macro(s) into empty slots. Review, then Write.`:"No empty slots to fill.","ok");
+        renderEditor();
+      };
+      root.querySelector("#macReload").onclick=load;
+      root.querySelector("#macWrite").onclick=write;
+    };
+
+    // Cheap path: update only the byte meter + Write-enabled state while typing.
+    const renderEditorMeterOnly=()=>{
+      const used=Macros.bytesUsed(texts, MacroKC); const over=used>bufSize;
+      const meter=root.querySelector("#macWrite")?.parentElement?.querySelector("span");
+      if(meter){ meter.className=over?"err":"muted"; meter.textContent=`${used} / ${bufSize} bytes${over?" — too large, trim before writing":""}`; }
+      const wb=root.querySelector("#macWrite"); if(wb) wb.disabled=over;
+    };
+
+    const write=async()=>{
+      if(!needConnection()) return;
+      const out=root.querySelector("#macOut");
+      let buf; try{ buf=Macros.serializeBuffer(texts, bufSize, MacroKC); }
+      catch(e){ out.innerHTML=`<span class="err">${escapeHtml(e.message)}</span>`; return; }
+      try{
+        await App.via.setMacroBuffer(0, buf);
+        out.innerHTML=`<span class="ok">Wrote ${texts.filter(t=>t).length} macro(s) (${buf.length} bytes).</span>`;
+        log("Macros written to keyboard.","ok");
+      }catch(e){ out.innerHTML=`<span class="err">Write failed: ${escapeHtml(e.message)}</span>`; }
+    };
+
+    const load=async()=>{
+      if(!App.connected){ show(`<div class="card"><div class="note">Connect the keyboard to edit macros.</div></div>`); return; }
+      show(`<div class="card"><p class="muted">Reading macro storage…</p></div>`);
+      try{
+        count=await App.via.getMacroCount();
+        bufSize=await App.via.getMacroBufferSize();
+        App.macroCount=count;
+        if(!count || !bufSize){
+          show(`<div class="card"><h2>Macros</h2><div class="note err">This firmware reports no macro storage (count ${count}, buffer ${bufSize} bytes), so macros can't be configured here.</div></div>`);
+          return;
+        }
+        const buf=await App.via.getMacroBuffer(bufSize);
+        texts=Macros.parseBuffer(buf, count, MacroKC);
+        renderEditor();
+      }catch(e){ show(`<div class="card"><div class="note err">Failed to read macros: ${escapeHtml(e.message)}</div></div>`); }
+    };
+
+    load();
+    App.on("connect", load);
+    App.on("disconnect", load);
+  }
+});
