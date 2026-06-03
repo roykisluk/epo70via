@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Epomaker Split 70 — Config Tool</title>
+<style>
+  :root{
+    --bg:#0f1117; --panel:#171a23; --panel2:#1e222e; --line:#2a2f3d;
+    --txt:#e6e9f0; --muted:#9aa3b2; --accent:#5b8cff; --accent2:#8a6cff;
+    --ok:#39d98a; --warn:#ffb454; --err:#ff5f6d; --key:#272c3a; --keyhi:#3a4260;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.45 system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--txt)}
+  header{display:flex;align-items:center;gap:14px;padding:12px 18px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+  header h1{font-size:16px;margin:0;font-weight:600;letter-spacing:.2px}
+  header .sub{color:var(--muted);font-size:12px}
+  .spacer{flex:1}
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:12px;background:var(--panel2);border:1px solid var(--line);color:var(--muted)}
+  .pill .dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+  .pill.ok .dot{background:var(--ok)} .pill.ok{color:var(--ok);border-color:#1f5740}
+  .pill.err .dot{background:var(--err)} .pill.err{color:var(--err)}
+  button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--panel2);color:var(--txt);padding:7px 14px;border-radius:8px;transition:.12s}
+  button:hover{border-color:var(--accent);background:#222838}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.primary:hover{filter:brightness(1.1)}
+  button.danger{border-color:#5a2530;color:var(--err)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  nav{display:flex;gap:4px;padding:8px 18px 0;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
+  nav button{border:none;border-bottom:2px solid transparent;background:none;border-radius:0;padding:9px 14px;color:var(--muted)}
+  nav button.active{color:var(--txt);border-bottom-color:var(--accent)}
+  nav button:hover{color:var(--txt);background:none}
+  main{padding:18px;max-width:1200px;margin:0 auto}
+  .panel{display:none} .panel.active{display:block}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+  .card h2{margin:0 0 4px;font-size:15px} .card h3{margin:14px 0 6px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  .muted{color:var(--muted)} .ok{color:var(--ok)} .warn{color:var(--warn)} .err{color:var(--err)}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+  .note{background:#1a2230;border:1px solid #26415f;border-radius:8px;padding:10px 12px;color:#bcd2ff;font-size:13px}
+  .note.warn{background:#2a2316;border-color:#5c4622;color:#ffd9a0}
+  .note.err{background:#2a1820;border-color:#5c2630;color:#ffc2c8}
+  /* keyboard render */
+  #kbWrap{overflow:auto;padding:10px;background:var(--panel2);border-radius:10px;border:1px solid var(--line)}
+  #kb{position:relative}
+  .key{position:absolute;border:1px solid #353b4d;background:var(--key);border-radius:6px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:11px;padding:2px;overflow:hidden;cursor:pointer;user-select:none;transition:.08s}
+  .key:hover{border-color:var(--accent);background:#2f3650}
+  .key.enc{border-color:var(--accent2);background:#2a2440}
+  .key.pressed{background:var(--ok);color:#04231a;border-color:var(--ok)}
+  .key small{display:block;color:var(--muted);font-size:9px}
+  .key.enc small{color:#b9a8ff}
+  /* picker modal */
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:flex-start;justify-content:center;z-index:50;padding:40px 16px;overflow:auto}
+  .modal.open{display:flex}
+  .modal .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;width:min(820px,100%);padding:16px}
+  .modal .cats{display:flex;gap:4px;flex-wrap:wrap;margin:10px 0}
+  .modal .cats button{padding:5px 10px;font-size:12px}
+  .modal .cats button.active{background:var(--accent);border-color:var(--accent);color:#fff}
+  .kcgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:6px;max-height:46vh;overflow:auto;padding:4px}
+  .kc{border:1px solid var(--line);background:var(--panel2);border-radius:7px;padding:8px 4px;text-align:center;font-size:11px;cursor:pointer}
+  .kc:hover{border-color:var(--accent);background:#222838}
+  .kc small{display:block;color:var(--muted);font-size:9px;margin-top:2px}
+  input,select{font:inherit;background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:7px;padding:7px 9px}
+  input[type=range]{padding:0}
+  table{border-collapse:collapse;width:100%;font-size:13px}
+  th,td{text-align:left;padding:6px 10px;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:600}
+  #log{font-family:ui-monospace,monospace;font-size:11.5px;background:#0a0c11;border:1px solid var(--line);border-radius:8px;padding:10px;max-height:180px;overflow:auto;white-space:pre-wrap}
+  .swatch{width:22px;height:22px;border-radius:5px;border:1px solid var(--line);display:inline-block;vertical-align:middle}
+  label.fld{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Epomaker Split 70 · Config Tool</h1>
+    <div class="sub">Self-hosted VIA-protocol configurator · WebHID</div>
+  </div>
+  <div class="spacer"></div>
+  <span id="connPill" class="pill"><span class="dot"></span><span id="connTxt">Disconnected</span></span>
+  <button id="connectBtn" class="primary">Connect keyboard</button>
+  <button id="disconnectBtn" disabled>Disconnect</button>
+</header>
+
+<nav id="tabs"></nav>
+<main id="panels"></main>
+
+<!-- Keycode picker modal -->
+<div class="modal" id="picker">
+  <div class="box">
+    <div class="row" style="justify-content:space-between">
+      <h2 id="pickerTitle">Choose a keycode</h2>
+      <button onclick="Picker.close()">Close ✕</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <input id="pickerSearch" placeholder="Search keycodes…" style="flex:1">
+      <label class="fld" style="flex-direction:row;align-items:center">Raw hex
+        <input id="pickerHex" placeholder="0x041C" style="width:90px">
+        <button onclick="Picker.applyHex()">Set</button>
+      </label>
+    </div>
+    <div class="cats" id="pickerCats"></div>
+    <div class="kcgrid" id="pickerGrid"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   EMBEDDED DATA (injected at build time — see ARCHITECTURE.md)
+   ============================================================ */
+/*__KEYBOARD_DEF__*/
+/*__BASIC_KEYCODES__*/
+
+/* ============================================================
+   KEYCODES MODULE  — encode/decode 16-bit QMK keycodes.
+   Range bases verified against QMK data/constants/keycodes.
+   ============================================================ */
+const Keycodes = (() => {
+  const byCode = new Map(), byName = new Map();
+  const add = (code,name,label,cat,extra={}) => {
+    const r = Object.assign({code,name,label,cat}, extra);
+    if(!byCode.has(code)) byCode.set(code,r);
+    byName.set(name,r); return r;
+  };
+  for (const [c,n,l,cat] of BASIC_KEYCODES) add(c,n,l,cat);
+  // Auto Shift (0x7C10–0x7C15). Only act if firmware has AUTO_SHIFT_ENABLE.
+  [["AS_DOWN","AS Down",0x7C10],["AS_UP","AS Up",0x7C11],["AS_RPT","AS Report",0x7C12],
+   ["AS_ON","AS On",0x7C13],["AS_OFF","AS Off",0x7C14],["AS_TOGG","AS Toggle",0x7C15]]
+   .forEach(([n,l,c])=>add(c,n,l,"Auto Shift"));
+  // Custom keycodes: customKeycodes[i] => 0x7E00+i (QK_KB_0)
+  const custom = (KEYBOARD_DEF.customKeycodes||[]).map((ck,i)=>
+    add(0x7E00+i, ck.name, ck.shortName||ck.name, "Custom", {title:ck.title}));
+
+  const RANGE = {LT:0x4000,LM:0x5000,TO:0x5200,MO:0x5220,DF:0x5240,TG:0x5260,
+                 OSL:0x5280,OSM:0x52A0,TT:0x52C0,MT:0x2000,MODS:0x0100};
+  const MODBITS = [["C",0x01],["S",0x02],["A",0x04],["G",0x08]]; // |0x10 => right side
+  const hex = c => "0x"+c.toString(16).toUpperCase().padStart(4,"0");
+  function modName(bits){
+    const right = bits & 0x10; const lo = bits & 0x0F;
+    const names = MODBITS.filter(([_,b])=>lo&b).map(([n])=>n).join("");
+    return (right?"R":"L") + (names||"?");
+  }
+  // layer ops: code = base|layer  (mask 0x1F, no hidden bits)
+  const layerCode = (op,layer)=> RANGE[op] | (layer & 0x1F);
+
+  function decode(kc){
+    kc &= 0xFFFF;
+    if (byCode.has(kc)) return byCode.get(kc);
+    const between=(a,b)=>kc>=a&&kc<=b;
+    if (between(0x5220,0x523F)) return {code:kc,name:"MO",label:`MO(${kc-0x5220})`,cat:"Layers"};
+    if (between(0x5200,0x521F)) return {code:kc,name:"TO",label:`TO(${kc-0x5200})`,cat:"Layers"};
+    if (between(0x5240,0x525F)) return {code:kc,name:"DF",label:`DF(${kc-0x5240})`,cat:"Layers"};
+    if (between(0x5260,0x527F)) return {code:kc,name:"TG",label:`TG(${kc-0x5260})`,cat:"Layers"};
+    if (between(0x5280,0x529F)) return {code:kc,name:"OSL",label:`OSL(${kc-0x5280})`,cat:"Layers"};
+    if (between(0x52C0,0x52DF)) return {code:kc,name:"TT",label:`TT(${kc-0x52C0})`,cat:"Layers"};
+    if (between(0x52A0,0x52BF)) return {code:kc,name:"OSM",label:`OSM(${modName(kc-0x52A0)})`,cat:"Modifiers"};
+    if (between(0x4000,0x4FFF)){const layer=(kc>>8)&0xF,t=kc&0xFF,tk=byCode.get(t);
+      return {code:kc,name:"LT",label:`LT${layer}(${tk?tk.label:hex(t)})`,cat:"Layers"};}
+    if (between(0x2000,0x3FFF)){const m=(kc>>8)&0x1F,t=kc&0xFF,tk=byCode.get(t);
+      return {code:kc,name:"MT",label:`${modName(m)}_T(${tk?tk.label:hex(t)})`,cat:"Modifiers"};}
+    if (between(0x0100,0x1FFF)){const m=(kc>>8)&0x1F,b=kc&0xFF,bk=byCode.get(b);
+      return {code:kc,name:"MODS",label:`${modName(m)}(${bk?bk.label:hex(b)})`,cat:"Modifiers"};}
+    return {code:kc,name:hex(kc),label:hex(kc),cat:"Other",unknown:true};
+  }
+  return {byCode,byName,custom,decode,layerCode,hex,RANGE,
+          basic:BASIC_KEYCODES.map(([c,n,l,cat])=>({code:c,name:n,label:l,cat}))};
+})();
+
+/* ============================================================
+   VIA PROTOCOL  — typed commands over WebHID (report id 0, 32B).
+   Command IDs verified against the-via/qmk_firmware quantum/via.h.
+   ============================================================ */
+const VIA_CMD = {
+  GET_PROTOCOL_VERSION:0x01, GET_KEYBOARD_VALUE:0x02, SET_KEYBOARD_VALUE:0x03,
+  GET_KEYCODE:0x04, SET_KEYCODE:0x05, KEYMAP_RESET:0x06,
+  CUSTOM_SET:0x07, CUSTOM_GET:0x08, CUSTOM_SAVE:0x09,
+  EEPROM_RESET:0x0A, BOOTLOADER_JUMP:0x0B,
+  MACRO_GET_COUNT:0x0C, MACRO_GET_BUFFER_SIZE:0x0D, MACRO_GET_BUFFER:0x0E,
+  MACRO_SET_BUFFER:0x0F, MACRO_RESET:0x10,
+  GET_LAYER_COUNT:0x11, GET_BUFFER:0x12, SET_BUFFER:0x13,
+  GET_ENCODER:0x14, SET_ENCODER:0x15,
+};
+const KB_VALUE = {UPTIME:0x01, LAYOUT_OPTIONS:0x02, SWITCH_MATRIX_STATE:0x03,
+                  FIRMWARE_VERSION:0x04};
+
+class Via {
+  constructor(device){
+    this.dev = device;
+    this._pending = null;
+    this._gen = 0;
+    this._lock = Promise.resolve();
+    // Match each input report to the command we sent: VIA echoes the command id in
+    // byte 0 (and the sub-command in byte 1 for get/set_keyboard_value). Reports that
+    // don't match (stray/late responses, OS-delivered key events) are ignored, so a
+    // timed-out command can never desync the next one. Critical: reloadKeymap issues
+    // ~50 sequential reads; one desync = silent keymap corruption.
+    this._onInput = (e)=>{
+      const d = new Uint8Array(e.data.buffer, e.data.byteOffset, e.data.byteLength);
+      const p = this._pending; if(!p) return;
+      if(d[0] !== p.expect) return;
+      if(p.expect2 != null && d[1] !== p.expect2) return;
+      this._pending = null; clearTimeout(p.t); p.resolve(d);
+    };
+    device.addEventListener("inputreport", this._onInput);
+  }
+  _raw(bytes){
+    const out = new Uint8Array(32);
+    out.set(bytes.slice(0,32));
+    const expect = bytes[0];
+    const expect2 = (bytes[0]===VIA_CMD.GET_KEYBOARD_VALUE || bytes[0]===VIA_CMD.SET_KEYBOARD_VALUE) ? bytes[1] : null;
+    return new Promise((resolve,reject)=>{
+      const gen = ++this._gen;
+      const t = setTimeout(()=>{ if(this._pending&&this._pending.gen===gen) this._pending=null;
+        reject(new Error("VIA timeout — no HID response")); }, 1500);
+      this._pending = {gen, expect, expect2, resolve, t};
+      this.dev.sendReport(0, out).catch(e=>{ clearTimeout(t);
+        if(this._pending&&this._pending.gen===gen) this._pending=null; reject(e); });
+    });
+  }
+  // serialize commands (one outstanding request at a time)
+  exec(bytes){ const run=()=>this._raw(bytes); const p=this._lock.then(run,run); this._lock=p.catch(()=>{}); return p; }
+
+  async getProtocolVersion(){ const r=await this.exec([VIA_CMD.GET_PROTOCOL_VERSION]); return (r[1]<<8)|r[2]; }
+  async getLayerCount(){ const r=await this.exec([VIA_CMD.GET_LAYER_COUNT]); return r[1]; }
+  async getFirmwareVersion(){ const r=await this.exec([VIA_CMD.GET_KEYBOARD_VALUE,KB_VALUE.FIRMWARE_VERSION]);
+    return (r[2]<<24)|(r[3]<<16)|(r[4]<<8)|r[5]; }
+  async setKeycode(layer,row,col,kc){ await this.exec([VIA_CMD.SET_KEYCODE,layer,row,col,(kc>>8)&0xFF,kc&0xFF]); }
+  async getEncoder(layer,idx,cw){ const r=await this.exec([VIA_CMD.GET_ENCODER,layer,idx,cw?1:0]); return (r[4]<<8)|r[5]; }
+  async setEncoder(layer,idx,cw,kc){ await this.exec([VIA_CMD.SET_ENCODER,layer,idx,cw?1:0,(kc>>8)&0xFF,kc&0xFF]); }
+  async eepromReset(){ await this.exec([VIA_CMD.EEPROM_RESET]); }
+  // dynamic keymap buffer (layer-major: ((layer*rows+row)*cols+col)*2)
+  async getKeymapBuffer(totalBytes){
+    const buf = new Uint8Array(totalBytes); const CHUNK=28;
+    for(let off=0; off<totalBytes; off+=CHUNK){
+      const sz=Math.min(CHUNK,totalBytes-off);
+      const r=await this.exec([VIA_CMD.GET_BUFFER,(off>>8)&0xFF,off&0xFF,sz]);
+      for(let i=0;i<sz;i++) buf[off+i]=r[4+i];
+    }
+    return buf;
+  }
+  // matrix state: per row 2 bytes (cols 9>8): [ (v>>8)&0xFF, v&0xFF ]
+  async getMatrixState(rows,cols){
+    const r=await this.exec([VIA_CMD.GET_KEYBOARD_VALUE,KB_VALUE.SWITCH_MATRIX_STATE]);
+    const bpr = Math.ceil(cols/8); const state=[];
+    for(let row=0; row<rows; row++){
+      let v=0; const base=2+row*bpr;
+      for(let b=0;b<bpr;b++) v = (v<<8) | r[base+b]; // big-endian per row
+      const cells=[]; for(let c=0;c<cols;c++) cells.push((v>>c)&1);
+      state.push(cells);
+    }
+    return state;
+  }
+  // custom (lighting) channel protocol
+  async customGet(channel,value,len=1){ const r=await this.exec([VIA_CMD.CUSTOM_GET,channel,value]); return Array.from(r.slice(3,3+len)); }
+  async customSet(channel,value,data){ await this.exec([VIA_CMD.CUSTOM_SET,channel,value,...data]); }
+  async customSave(channel){ await this.exec([VIA_CMD.CUSTOM_SAVE,channel]); }
+
+  dispose(){ try{this.dev.removeEventListener("inputreport",this._onInput);}catch(e){} }
+}
+
+/* ============================================================
+   APP STATE + EVENT BUS
+   ============================================================ */
+const App = {
+  def: KEYBOARD_DEF,
+  rows: KEYBOARD_DEF.matrix.rows,
+  cols: KEYBOARD_DEF.matrix.cols,
+  via: null,
+  connected: false,
+  layerCount: 0,
+  protocol: 0,
+  keymap: null,           // Uint16Array length layerCount*rows*cols
+  state: { layer: 0 },
+  layout: [],             // parsed KLE keys [{x,y,w,h,pos,row,col,enc}]
+  encoders: [],           // [{idx, row, col}]
+  _bus: {},
+  on(ev,fn){ (this._bus[ev]=this._bus[ev]||[]).push(fn); },
+  emit(ev,arg){ (this._bus[ev]||[]).forEach(fn=>{try{fn(arg)}catch(e){console.error(e)}}); },
+  kmIndex(layer,row,col){ return (layer*this.rows + row)*this.cols + col; },
+  getKC(layer,row,col){ return this.keymap ? this.keymap[this.kmIndex(layer,row,col)] : 0; },
+};
+
+function log(msg, cls){
+  const el=document.getElementById("log"); if(!el) return;
+  const t=new Date().toLocaleTimeString();
+  el.innerHTML += `<div class="${cls||''}">[${t}] ${msg}</div>`;
+  el.scrollTop = el.scrollHeight;
+}
+
+/* ---- parse KLE layout from definition ---- */
+function parseLayout(def){
+  const kle = def.layouts.keymap; const keys=[]; const encoders=[];
+  let y=0;
+  for(const rowArr of kle){
+    let x=0, w=1, h=1;
+    for(const item of rowArr){
+      if(typeof item==="object"){
+        if("x" in item) x+=item.x;
+        if("y" in item) y+=item.y;
+        if("w" in item) w=item.w;
+        if("h" in item) h=item.h;
+        continue;
+      }
+      const segs = String(item).split("\n");
+      const pos = segs[0];
+      const m = pos.match(/^(\d+),(\d+)$/);
+      const encSeg = segs.find(s=>/^e\d+$/.test(s));
+      const enc = encSeg ? parseInt(encSeg.slice(1),10) : null;
+      if(m){
+        const row=+m[1], col=+m[2];
+        const k={x,y,w,h,pos,row,col,enc};
+        keys.push(k);
+        if(enc!=null) encoders.push({idx:enc,row,col});
+      }
+      x += w; w=1; h=1;
+    }
+    y += 1;
+  }
+  encoders.sort((a,b)=>a.idx-b.idx);
+  return {keys, encoders};
+}
+
+/* ============================================================
+   KEYCODE PICKER  (shared modal)
+   ============================================================ */
+const Picker = {
+  _cb:null, _cat:"Basic", _q:"",
+  catsOrder:["Basic","Modifiers","Layers","Auto Shift","Media","Mouse","System","Custom","Special","All"],
+  open(title, cb){
+    this._cb=cb; document.getElementById("pickerTitle").textContent=title||"Choose a keycode";
+    document.getElementById("pickerHex").value="";
+    document.getElementById("pickerSearch").value=""; this._q="";
+    document.getElementById("picker").classList.add("open");
+    this._renderCats(); this._renderGrid();
+    document.getElementById("pickerSearch").focus();
+  },
+  close(){ document.getElementById("picker").classList.remove("open"); this._cb=null; },
+  pick(code){ const cb=this._cb; this.close(); if(cb) cb(code); },
+  applyHex(){ const v=parseInt(document.getElementById("pickerHex").value,16);
+    if(isNaN(v)||v<0||v>0xFFFF){ alert("Enter a hex value 0x0000–0xFFFF"); return; } this.pick(v); },
+  _entries(){
+    // build full entry list including computed layer-ops
+    const out = Keycodes.basic.slice();
+    Keycodes.custom.forEach(c=>out.push(c));
+    [["AS_DOWN",0x7C10],["AS_UP",0x7C11],["AS_RPT",0x7C12],["AS_ON",0x7C13],["AS_OFF",0x7C14],["AS_TOGG",0x7C15]]
+      .forEach(([n,c])=>out.push(Keycodes.byCode.get(c)));
+    const L = Math.max(App.layerCount||4, 1);
+    for(const op of ["MO","TO","TG","DF","OSL","TT"]){
+      for(let i=0;i<L;i++) out.push({code:Keycodes.layerCode(op,i),name:`${op}(${i})`,label:`${op}(${i})`,cat:"Layers"});
+    }
+    return out;
+  },
+  _renderCats(){
+    const present=new Set(this._entries().map(e=>e.cat)); present.add("All");
+    const host=document.getElementById("pickerCats"); host.innerHTML="";
+    for(const c of this.catsOrder){ if(!present.has(c))continue;
+      const b=document.createElement("button"); b.textContent=c;
+      if(c===this._cat)b.className="active";
+      b.onclick=()=>{this._cat=c;this._renderCats();this._renderGrid();};
+      host.appendChild(b);
+    }
+  },
+  _renderGrid(){
+    const grid=document.getElementById("pickerGrid"); grid.innerHTML="";
+    const q=this._q.toLowerCase();
+    let list=this._entries();
+    if(this._cat!=="All") list=list.filter(e=>e.cat===this._cat);
+    if(q) list=list.filter(e=>(e.name+" "+e.label).toLowerCase().includes(q));
+    for(const e of list){
+      const d=document.createElement("div"); d.className="kc"; d.title=e.name+(e.title?` — ${e.title}`:"");
+      d.innerHTML=`${escapeHtml(e.label)}<small>${escapeHtml(e.name)}</small>`;
+      d.onclick=()=>this.pick(e.code);
+      grid.appendChild(d);
+    }
+    if(!list.length) grid.innerHTML='<div class="muted" style="padding:10px">No matches.</div>';
+  }
+};
+function escapeHtml(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+
+/* ============================================================
+   PANEL REGISTRY
+   To add a feature: push an object { id, title, requiresConnection,
+   render(root, App) }. The shell builds a tab + calls render().
+   render() may also subscribe to App.on('connect'|'disconnect'|
+   'keymap-loaded'|'layer-change', fn) for live updates.
+   ============================================================ */
+const PANELS = [];
+function registerPanel(p){ PANELS.push(p); }
+
+/*__PANELS__*/
+
+/* ============================================================
+   SHELL — tabs, connection lifecycle
+   ============================================================ */
+function buildShell(){
+  const tabs=document.getElementById("tabs"), host=document.getElementById("panels");
+  PANELS.forEach((p,i)=>{
+    const btn=document.createElement("button"); btn.textContent=p.title; btn.dataset.id=p.id;
+    btn.onclick=()=>showTab(p.id); tabs.appendChild(btn);
+    const div=document.createElement("div"); div.className="panel"; div.id="panel-"+p.id; host.appendChild(div);
+    try{ p.render(div, App); }catch(e){ div.innerHTML=`<div class="card err">Panel error: ${escapeHtml(e.message)}</div>`; }
+  });
+  if(PANELS.length) showTab(PANELS[0].id);
+}
+function showTab(id){
+  document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("active",b.dataset.id===id));
+  document.querySelectorAll(".panel").forEach(p=>p.classList.toggle("active",p.id==="panel-"+id));
+}
+function setConn(on, txt){
+  App.connected=on;
+  const pill=document.getElementById("connPill");
+  pill.className="pill "+(on?"ok":(txt==="error"?"err":""));
+  document.getElementById("connTxt").textContent=txt||(on?"Connected":"Disconnected");
+  document.getElementById("connectBtn").disabled=on;
+  document.getElementById("disconnectBtn").disabled=!on;
+}
+
+async function connect(){
+  if(!("hid" in navigator)){ alert("WebHID not available. Use Chrome, Edge, Brave or Opera (desktop)."); return; }
+  try{
+    const filters=[{usagePage:0xFF60, usage:0x61}];
+    const devices=await navigator.hid.requestDevice({filters});
+    if(!devices.length){ log("No device selected.","warn"); return; }
+    const dev=devices[0];
+    if(!dev.opened) await dev.open();
+    App.via=new Via(dev);
+    log(`Opened "${dev.productName}" (VID ${hex16(dev.vendorId)} PID ${hex16(dev.productId)})`,"ok");
+    App.protocol=await App.via.getProtocolVersion();
+    App.layerCount=await App.via.getLayerCount();
+    log(`VIA protocol v${App.protocol}, ${App.layerCount} layers. Reading keymap…`);
+    await reloadKeymap();
+    setConn(true);
+    App.emit("connect");
+  }catch(e){
+    log("Connect failed: "+e.message,"err");
+    setConn(false,"error");
+  }
+}
+async function reloadKeymap(){
+  const total=App.layerCount*App.rows*App.cols*2;
+  const buf=await App.via.getKeymapBuffer(total);
+  const km=new Uint16Array(App.layerCount*App.rows*App.cols);
+  for(let i=0;i<km.length;i++) km[i]=(buf[i*2]<<8)|buf[i*2+1];
+  App.keymap=km;
+  log(`Keymap loaded (${km.length} keys across ${App.layerCount} layers).`,"ok");
+  App.emit("keymap-loaded");
+}
+function disconnect(){
+  try{ App.via&&App.via.dispose(); if(App.via&&App.via.dev.opened) App.via.dev.close(); }catch(e){}
+  App.via=null; App.keymap=null; setConn(false); App.emit("disconnect");
+  log("Disconnected.");
+}
+const hex16=n=>"0x"+(n||0).toString(16).toUpperCase().padStart(4,"0");
+
+document.getElementById("connectBtn").onclick=connect;
+document.getElementById("disconnectBtn").onclick=disconnect;
+if("hid" in navigator){
+  navigator.hid.addEventListener("disconnect", e=>{ if(App.via&&e.device===App.via.dev) disconnect(); });
+}
+
+/* ---- in-page keycode self-test (encode↔decode round-trip) ---- */
+function selfTest(){
+  const checks=[];
+  const t=(name,cond)=>checks.push([name,!!cond]);
+  t("KC_A decodes to A", Keycodes.decode(0x04).label==="A");
+  t("MO(2) round-trip", Keycodes.layerCode("MO",2)===0x5222 && Keycodes.decode(0x5222).label==="MO(2)");
+  t("TO(0) round-trip", Keycodes.layerCode("TO",0)===0x5200 && Keycodes.decode(0x5200).label==="TO(0)");
+  t("TG(1) round-trip", Keycodes.layerCode("TG",1)===0x5261);
+  t("AS_TOGG present", Keycodes.byName.get("AS_TOGG").code===0x7C15);
+  t("custom MOR_1 @0x7E03", (Keycodes.byName.get("MOR_1")||{}).code===0x7E03);
+  t("LT decode", Keycodes.decode(0x4000|(1<<8)|0x2C).label.startsWith("LT1("));
+  const fail=checks.filter(c=>!c[1]);
+  if(fail.length){ console.error("SELFTEST FAIL",fail); log("Self-test FAILED: "+fail.map(f=>f[0]).join(", "),"err"); }
+  else log(`Self-test passed (${checks.length} keycode checks).`,"ok");
+}
+
+/* ---- boot ---- */
+(function boot(){
+  try{
+    const {keys,encoders}=parseLayout(App.def);
+    App.layout=keys; App.encoders=encoders;
+    buildShell();
+    selfTest();
+    log(`Loaded definition "${App.def.name}" — ${App.rows}×${App.cols} matrix, ${keys.length} keys, ${encoders.length} encoder(s).`);
+    if(!("hid" in navigator)) log("⚠ WebHID not supported in this browser. Use Chrome/Edge/Brave/Opera.","err");
+  }catch(e){ document.body.innerHTML="<pre style='color:#f88;padding:20px'>Boot error: "+e.stack+"</pre>"; }
+})();
+</script>
+</body>
+</html>
