@@ -33,6 +33,10 @@ no account, and it ships your keyboard's definition built-in so it doesn't rely 
    - **⑦ Layers & Presets** — one-click **numpad** onto a layer (on both hands), and a finder
      that lists every layer/OS-switch key so you can rebind the one that keeps flipping you to
      Windows.
+   - **Manual** (header button) — opens the official Epomaker manual,
+     `docs/Epomaker-Split70-manual.pdf` (Fn shortcuts for lighting, Bluetooth, battery; English on
+     pages 3–6). Works only while the HTML stays next to `docs/`; online copy:
+     https://epomaker.com/cdn/shop/files/Epomaker-Split70-manual.pdf
 
 ## "It keeps switching back to the Windows layout"
 
