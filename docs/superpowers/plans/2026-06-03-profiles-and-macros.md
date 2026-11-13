@@ -853,7 +853,7 @@ const MACRO_STARTER=[
   {label:"Python: import numpy", text:"import numpy as np\n"},
   {label:"Python: import pandas", text:"import pandas as pd\n"},
   {label:"Python: main guard", text:"if __name__ == \"__main__\":\n[[TAB]]"},
-  {label:"Admin: email", text:"roykisluk@gmail.com"},
+  {label:"Admin: email", text:"you@example.com"},
 ];
 ```
 
